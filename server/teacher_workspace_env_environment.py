@@ -212,8 +212,10 @@ class TeacherWorkspaceEnvironment(Environment):
         self._ep_state = State(episode_id=str(uuid4()), step_count=0)
         self._task = get_task(task_name)
         self._rewards = []
-        self._last_action  = None   # add this
-        self._repeat_count = 0  
+        self._action_counts: dict = {}
+        self._write_happened: bool = False
+        self._last_action = ""
+        self._repeat_count = 0
 
         return self._make_obs(
             success=True,
@@ -233,25 +235,32 @@ class TeacherWorkspaceEnvironment(Environment):
         params = action.params or {}
 
             # Penalise repeated identical read calls (infinite loop behavior)
-        if not hasattr(self, '_last_action'):
-            self._last_action = None
-            self._repeat_count = 0
+        current_action_key = f"{tool}:{str(sorted(params.items()))}"
 
-        if tool == self._last_action and tool in READ_TOOLS:
-            self._repeat_count += 1
-            if self._repeat_count >= 2:
+        if tool in READ_TOOLS:
+            if self._write_happened:
+                self._action_counts[current_action_key] = 0
+                self._write_happened = False
+            self._action_counts[current_action_key] = self._action_counts.get(current_action_key, 0) + 1
+            if self._action_counts[current_action_key] > 2:
                 obs = self._make_obs(
-                    success=False,
-                    result=None,
-                    error=f"Repeated read '{tool}' with no write in between — unproductive loop.",
-                    reward=-0.05,
-                    done=False,
+                    success=False, result=None,
+                    error=f"Repeated identical call to '{tool}' — unproductive loop.",
+                    reward=-0.05, done=False,
                 )
                 self._rewards.append(-0.05)
                 return obs
         else:
-            self._repeat_count = 0
-        self._last_action = tool
+            self._write_happened = True
+            self._action_counts[current_action_key] = self._action_counts.get(current_action_key, 0) + 1
+            if self._action_counts[current_action_key] > 2:
+                obs = self._make_obs(
+                    success=False, result=None,
+                    error=f"Repeated identical call to '{tool}' — unproductive loop.",
+                    reward=-0.10, done=False,
+                )
+                self._rewards.append(-0.10)
+                return obs
 
         # Dispatch
         handler = getattr(self, f"_tool_{tool}", None)
@@ -920,5 +929,5 @@ class TeacherWorkspaceEnvironment(Environment):
         base = self.grade()
         positive_rewards = sum(r for r in self._rewards if r > 0)
         negative_rewards = sum(r for r in self._rewards if r < 0)
-        efficiency_bonus = (positive_rewards * 0.05) + (negative_rewards * 0.3)
+        efficiency_bonus = (positive_rewards * 0.05) + (negative_rewards * 0.2)
         return round(max(0.0, min(1.0, base + efficiency_bonus)), 4)

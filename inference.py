@@ -21,7 +21,7 @@ load_dotenv()
 
 # ── Environment variables ───────────────────────────────────────────────────
 API_BASE_URL     = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME       = os.getenv("MODEL_NAME", "qwen/qwen-2.5-72b-instruct")
+MODEL_NAME       = os.getenv("MODEL_NAME")
 HF_TOKEN         = os.getenv("HF_TOKEN")
 
 if HF_TOKEN is None:
@@ -34,14 +34,14 @@ from models import TeacherAction, TeacherObservation
 
 # ── Task config ─────────────────────────────────────────────────────────────
 TASKS      = ["setup_new_course", "grade_and_notify", "end_of_semester"]
-MAX_STEPS  = {"setup_new_course": 20, "grade_and_notify": 30, "end_of_semester": 40}
+MAX_STEPS  = {"setup_new_course": 10, "grade_and_notify": 40, "end_of_semester": 55}
 BENCHMARK  = "teacher_workspace_env"
 
 # ── Retry / safety config ────────────────────────────────────────────────────
 MAX_RETRIES           = 5
 BASE_DELAY            = 1.0
 MAX_DELAY             = 30.0
-MAX_CONSECUTIVE_FAILS = 5    
+MAX_CONSECUTIVE_FAILS = 8
 READ_ONLY_TOOLS = {
     "list_inbox", "list_sheets", "list_classrooms", "list_events",
     "get_cells", "read_mail", "search_mail", "get_event",
@@ -169,6 +169,18 @@ STOPPING RULES:
 - Once all sub-tasks are complete, do not take any further actions.
 - Check COMPLETED SUB-TASKS before acting — never repeat a completed step.
 
+When all required sub-tasks are complete, output:
+{"tool_name": "__done__", "params": {}}
+
+Required sub-tasks are ONLY what the task prompt explicitly asks for.
+Do not invent additional tasks.
+
+
+BEFORE EVERY ACTION:
+- Check COMPLETED SUB-TASKS — if the sub-task is already done, skip it.
+- Check RECENT HISTORY — if your last action had a negative reward, change your approach.
+- Never repeat an action that previously gave reward less than 0.
+
 AVAILABLE TOOLS:
 
 Google Classroom (read):
@@ -222,6 +234,8 @@ BEHAVIOUR RULES:
 6. create_label must be called BEFORE assign_label for the same label name.
 7. For failing student Meet events: use create_meet_event, include parent email in participants.
 8. If an action errors, read the error carefully and fix your params before retrying.
+9. To write a note use add_note not update_cell.
+10. Only create_meet_event for students where (C+D+E)/3 < 60.
 """
 
 
@@ -403,7 +417,12 @@ def run_task(task_name: str) -> Dict:
                     break
                 continue
 
-            # ── Execute ───────────────────────────────────────────────────
+            # ── Execute ───────────────────────────────────────────────────'
+            if action_dict["tool_name"] == "__done__":
+                log_step(step, action_dict, 0.0, True, None)
+                steps_taken = step
+                break
+            
             try:
                 action = TeacherAction(
                     tool_name=action_dict["tool_name"],
