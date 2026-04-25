@@ -180,7 +180,7 @@ def run_task_stream(task_name: str) -> Generator[dict, None, None]:
             history.append("WARNING: 4 consecutive reads — must take a write action next")
             consecutive_reads = 0
 
-        score = round(min(max(env.grade(), 0.01), 0.99), 2)
+        score=env.final_score()
 
         yield {
             "step": step,
@@ -201,7 +201,7 @@ def run_task_stream(task_name: str) -> Generator[dict, None, None]:
             break
 
     # Final grade
-    score   = round(min(max(env.grade(), 0.01), 0.99), 2)
+    score   = env.final_score()
     success = score >= 0.99
     yield {
         "step": steps_taken, "tool": "DONE", "params": {}, "reward": 0.0,
