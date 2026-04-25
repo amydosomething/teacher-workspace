@@ -37,7 +37,8 @@ from inference import (
     parse_action,
     build_user_prompt,
 )
-from server.teacher_workspace_env_environment import TeacherWorkspaceEnvironment, TASKS as TASK_CONFIGS
+from server.teacher_workspace_env_environment import TeacherWorkspaceEnvironment
+from server.tasks import TASKS as TASK_CONFIGS
 from models import TeacherAction, TeacherObservation
 from openai import OpenAI
 
@@ -341,7 +342,7 @@ def run_ui(task_name: str):
         f"### Task prompt\n\n```\n{prompt_text}\n```",
         "## Score: —",
         "_Nothing completed yet_",
-        [], None, "", "", "", "", "",
+        [], None, "", "", "", "", ""
     )
 
     step_rows   = []
